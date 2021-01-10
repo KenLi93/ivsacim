@@ -1,8 +1,8 @@
-70c73d6819a6e2f1dde00333fd855e2c *DESCRIPTION
-a197ebd74bde65c672fd89c33693d9ab *NAMESPACE
+e427c97b9e0639090824dd73ff6485ca *DESCRIPTION
+b9e58750484c3eaa8f4f2ba22348367e *NAMESPACE
 901d5565eb261d8acb67aeb19efe91ae *R/RcppExports.R
-771c9cb1a4d0010b4fec3d74d859c6bd *R/auxiliary.R
-da0ff86def8ee1893294d95592dcf7be *R/ivsacim.R
+d7cd6cc4017d0fefefe0b0346c2aaa92 *R/auxiliary.R
+5c018de03a5218c49f9e425453828098 *R/ivsacim.R
 a1c8fe833484352bb7ca314fcd44f4a0 *man/IV_center.Rd
 d6169566fc7bfe3d0ff033799d5f00a5 *man/ivsacim.Rd
 bb856b5feb3fac10a21bddffc5484327 *man/ivsacim_est.Rd

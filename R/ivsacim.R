@@ -1,4 +1,4 @@
-#' @title Fitting a Cumulative Intensity Model for Exposure Effect with Instrumental Variables
+#' @title Fitting a Cumulative Intensity Model for Exposure Effects with Instrumental Variables
 #' @description ivsacim is used to fit cumulative intensity models for exposure effects with instrumental variables.
 #' @param time the censored event time
 #' @param event event indicator
@@ -7,17 +7,17 @@
 #' @param treatment_init the initial treatment assignment
 #' @param treatment_shift_time the shift time of each subject, if no shift for a subject, set as 0
 #' @param covar the baseline covariates
-#' @param max_time the max time that we threshold
-#' @param max_time_bet the max time that we threshold
+#' @param max_time the max time that we threshold for nonconstant effect
+#' @param max_time_bet the max time that we threshold for constant effect
 #' @param n_sim the number of resampling, set as 0 if no resampling is needed
 #' @return ivsacim returns an object of class "tivsacim".
 #' An object of class "ivsacim" is a list containing the following components:
 #' \item{stime}{an estimate of the baseline hazards function}
-#' \item{dB_D}{an estimate of the baseline hazards function}
-#' \item{B_D}{an estimate of the coefficients}
-#' \item{beta}{an estimate of the baseline hazards function}
-#' \item{B_D_se}{an estimate of the variance covariance matrix of coef}
-#' \item{beta_se}{an estimate of the baseline hazards function}
+#' \item{dB_D}{an estimate of the increment of the treatment effect}
+#' \item{B_D}{an estimate of the treatment effect}
+#' \item{beta}{an estimate of the constant treatment effect}
+#' \item{B_D_se}{an estimate of the variance covariance matrix of B_D}
+#' \item{beta_se}{an estimate of the constant treatment effect}
 #' \item{by_prod}{a byproduct, that will used by other functions}
 #' @importFrom stats fitted glm lm predict qnorm residuals vcov rnorm
 #' @importFrom lava iid
@@ -269,7 +269,8 @@ plot.ivsacim <- function (x, gof = FALSE, ...){
     #par(mfrow=c(1,1))
     minv = min(c(obj$GOF.resamp[2, ], obj$GOF.resamp[2:22, ]))
     maxv = max(c(obj$GOF.resamp[2, ], obj$GOF.resamp[2:22, ]))
-    plot(obj$GOF.resamp[1, ], obj$GOF.resamp[2, ], type = "n", ylim = c(minv, maxv), main = "Goodness of fit process")
+    plot(obj$GOF.resamp[1, ], obj$GOF.resamp[2, ], type = "n", ylim = c(minv, maxv), 
+         xlab = "Time", ylab = "Test process", main = "")
     for(j in 1:20){
       lines(obj$GOF.resamp[1, ], obj$GOF.resamp[2 + j, ], type = "s", col = "grey")   
     }
@@ -286,7 +287,7 @@ plot.ivsacim <- function (x, gof = FALSE, ...){
     maxv1 = max(c(B_D + 1.96 * B_D_se, beta * stime))
     
     #par(mfrow=c(1,1))
-    plot(stime, B_D, type = "s", ylim = c(minv1, maxv1))
+    plot(stime, B_D, type = "s", ylim = c(minv1, maxv1), xlab = "Time", ylab = "Cumulative regression function", main = "")
     lines(stime, c(B_D + 1.96 * B_D_se), type = 's', lty = 2)
     lines(stime, c(B_D - 1.96 * B_D_se), type = 's', lty = 2)
     abline(0, 0)

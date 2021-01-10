@@ -1,5 +1,6 @@
 #' This function is to compute the centralized instrument given the covariates L
 #' @keywords internal
+#' @importFrom stats model.matrix
 #' @export
 IV_center <- function (Z, L = NULL) {
   
@@ -15,22 +16,24 @@ IV_center <- function (Z, L = NULL) {
   if (IV_type) {
     if (is.null(L)) {
       zmod <- glm(Z ~ 1, family = "binomial")
-      E.dot <- matrix(rep(1, length(Z)), ncol = 1) * c(fitted(zmod) * (1 - fitted(zmod))) 
+      E_dot <- matrix(rep(1, length(Z)), ncol = 1) * c(fitted(zmod) * (1 - fitted(zmod))) 
     }
     else {
-      zmod <- glm(Z ~ L, family = "binomial")
-      E.dot <- cbind(1, L) * c(fitted(zmod) * (1 - fitted(zmod))) 
+      Z_data <- data.frame(Z, L)
+      zmod <- glm(Z ~ ., data = Z_data, family = "binomial")
+      E_dot <- model.matrix(zmod) * c(fitted(zmod) * (1 - fitted(zmod))) 
     }
     
   }
   else{
     if (is.null(L)) {
       zmod <- lm(Z ~ 1)
-      E.dot <- matrix(rep(1, length(Z)), ncol = 1)
+      E_dot <- matrix(rep(1, length(Z)), ncol = 1)
     }
     else {
-      zmod <- lm(Z ~ L)
-      E.dot <- cbind(1, L)
+      Z_data <- data.frame(Z, L)
+      zmod <- lm(Z ~ ., data = Z_data)
+      E_dot <- model.matrix(zmod)
     }
     
   }
@@ -41,7 +44,7 @@ IV_center <- function (Z, L = NULL) {
   
   iv_center <- list(Zc = Z.c,
                     epstheta = eps.theta,
-                    Edot = E.dot,
+                    Edot = E_dot,
                     pdim = p.dim)
   return(iv_center)
 }
