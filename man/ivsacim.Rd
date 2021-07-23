@@ -2,7 +2,7 @@
 % Please edit documentation in R/ivsacim.R
 \name{ivsacim}
 \alias{ivsacim}
-\title{Fitting a Cumulative Intensity Model for Exposure Effect with Instrumental Variables}
+\title{Fitting a Cumulative Intensity Model for Exposure Effects with Instrumental Variables}
 \usage{
 ivsacim(
   time,
@@ -14,7 +14,8 @@ ivsacim(
   covar = NULL,
   max_time = NULL,
   max_time_bet = NULL,
-  n_sim = 0
+  n_sim = 0,
+  weights = NULL
 )
 }
 \arguments{
@@ -32,21 +33,23 @@ ivsacim(
 
 \item{covar}{the baseline covariates}
 
-\item{max_time}{the max time that we threshold}
+\item{max_time}{the max time that we threshold for nonconstant effect}
 
-\item{max_time_bet}{the max time that we threshold}
+\item{max_time_bet}{the max time that we threshold for constant effect}
 
 \item{n_sim}{the number of resampling, set as 0 if no resampling is needed}
+
+\item{weights}{optional weights used in the estimating equation}
 }
 \value{
-ivsacim returns an object of class "tivsacim".
+ivsacim returns an object of class "ivsacim".
 An object of class "ivsacim" is a list containing the following components:
 \item{stime}{an estimate of the baseline hazards function}
-\item{dB_D}{an estimate of the baseline hazards function}
-\item{B_D}{an estimate of the coefficients}
-\item{beta}{an estimate of the baseline hazards function}
-\item{B_D_se}{an estimate of the variance covariance matrix of coef}
-\item{beta_se}{an estimate of the baseline hazards function}
+\item{dB_D}{an estimate of the increment of the treatment effect}
+\item{B_D}{an estimate of the treatment effect}
+\item{beta}{an estimate of the constant treatment effect}
+\item{B_D_se}{an estimate of the variance covariance matrix of B_D}
+\item{beta_se}{an estimate of the constant treatment effect}
 \item{by_prod}{a byproduct, that will used by other functions}
 }
 \description{

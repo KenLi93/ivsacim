@@ -4,7 +4,21 @@
 #' This is the main function to compute the estimator in C++
 #' @keywords internal
 #' @export
-ivsacim_est <- function(time, event, stime, Zc, D_status, eps_2, Zc_dot) {
-    .Call(`_ivsacim_ivsacim_est`, time, event, stime, Zc, D_status, eps_2, Zc_dot)
+invalidivsacim_est <- function(time, event, stime, Z, Z_c, D_status, D_status_c, eps_2, Z_c_dot, weights) {
+    .Call(`_ivsacim_invalidivsacim_est`, time, event, stime, Z, Z_c, D_status, D_status_c, eps_2, Z_c_dot, weights)
+}
+
+#' This is the main function to compute the estimator in C++
+#' @param time censored event time
+#' @param event event indicator
+#' @param stime unique sorted noncensored event time
+#' @param Zc centered IV
+#' @param D_status treatment process at each noncensored event time
+#' @param eps_2 influence function from modeling IV
+#' @param Zc_dot bread matrix from modeling IV
+#' @keywords internal
+#' @export
+ivsacim_est <- function(time, event, stime, Zc, D_status, eps_2, Zc_dot, weights) {
+    .Call(`_ivsacim_ivsacim_est`, time, event, stime, Zc, D_status, eps_2, Zc_dot, weights)
 }
 

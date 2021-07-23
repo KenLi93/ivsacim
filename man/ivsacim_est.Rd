@@ -4,7 +4,22 @@
 \alias{ivsacim_est}
 \title{This is the main function to compute the estimator in C++}
 \usage{
-ivsacim_est(time, event, stime, Zc, D_status, eps_2, Zc_dot)
+ivsacim_est(time, event, stime, Zc, D_status, eps_2, Zc_dot, weights)
+}
+\arguments{
+\item{time}{censored event time}
+
+\item{event}{event indicator}
+
+\item{stime}{unique sorted noncensored event time}
+
+\item{Zc}{centered IV}
+
+\item{D_status}{treatment process at each noncensored event time}
+
+\item{eps_2}{influence function from modeling IV}
+
+\item{Zc_dot}{bread matrix from modeling IV}
 }
 \description{
 This is the main function to compute the estimator in C++

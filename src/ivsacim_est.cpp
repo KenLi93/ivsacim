@@ -11,6 +11,13 @@ using namespace Rcpp;
 //
 
 //' This is the main function to compute the estimator in C++
+//' @param time censored event time
+//' @param event event indicator
+//' @param stime unique sorted noncensored event time
+//' @param Zc centered IV
+//' @param D_status treatment process at each noncensored event time
+//' @param eps_2 influence function from modeling IV
+//' @param Zc_dot bread matrix from modeling IV
 //' @keywords internal
 //' @export
 // [[Rcpp::export]]
@@ -20,30 +27,24 @@ SEXP ivsacim_est(NumericVector time,
                  NumericVector Zc, 
                  NumericMatrix D_status,
                  NumericMatrix eps_2,
-                 NumericMatrix Zc_dot){
+                 NumericMatrix Zc_dot,
+                 NumericVector weights){
   
   // variables for estimation
   int n = time.size();
   int k = stime.size();
-  NumericVector B_D(k), dB_D(k), b_numer_D(k), b_dinom_D(k), risk_cumsum(k), indik_v(k);
+  NumericVector B_D(k), dB_D(k), b_numer_D(k), b_denom_D(k), risk_cumsum(k), indik_v(k);
   NumericMatrix dN(n, k),  risk_t(n, k), B_intD(n, k + 1);
-  double tmp_dinom_D;
-  double beta = 0, tot_risk = 0;
-  double del = 0.01;
+  double tmp_denom_D,beta = 0, tot_risk = 0, tmp, beta_se = 0, del = 0.01;
   
   // variables for variance estimate
   int pdim = Zc_dot.ncol();
-  NumericVector B_D_se(k);
-  //double B_D_se_tmp = 0;
-  NumericMatrix b_var_est(k, k);
-  NumericMatrix eps_1(n, k), eps(n, k);
-  NumericMatrix tmp_eps_1(n, k), tmp_eps_2(n, k);
-  NumericMatrix b_D_dot(pdim, k);
-  NumericMatrix H_dot(k, k);
-  NumericMatrix H_numer_dot(k, k), H_denom_dot(k, k), H_dot_Z(n, k);
-  NumericVector eps_beta(n);
-  double tmp, beta_se = 0;
-  
+  NumericVector B_D_se(k), eps_beta(n);
+  // eps is the influence function of d\hat B_D(t_1), ..., d\hat B_D(t_M)
+  NumericMatrix b_var_est(k, k), eps_1(n, k), eps(n, k), b_D_dot(pdim, k);
+  //H_dot is the derivative matrix of H against dB_D(t)
+  NumericMatrix H_numer_dot(k, k), H_denom_dot(k, k), H_dot_Z(n, k), H_dot(k, k);
+
   for (int j = 0; j < k; j++) {
     
     for (int i = 0; i < n; i++) {
@@ -52,16 +53,16 @@ SEXP ivsacim_est(NumericVector time,
       dN(i, j) *= event[i];
       risk_t(i, j) = (time[i] >= stime[j]) ? 1:0;
       risk_cumsum[j] += risk_t(i, j);
-      b_numer_D[j] += Zc[i] * exp(B_intD(i, j)) * dN(i, j);
-      b_dinom_D[j] += Zc[i] * risk_t(i, j) * exp(B_intD(i, j)) * D_status(i, j);
+      b_numer_D[j] += weights[i] * Zc[i] * exp(B_intD(i, j)) * dN(i, j);
+      b_denom_D[j] += weights[i] * Zc[i] * risk_t(i, j) * exp(B_intD(i, j)) * D_status(i, j);
     }
     
     
-    tmp_dinom_D = b_dinom_D[j];
-    tmp_dinom_D = (tmp_dinom_D < 0) ? -tmp_dinom_D:tmp_dinom_D;
-    indik_v[j] = (tmp_dinom_D < del) ? 0:1;
+    tmp_denom_D = b_denom_D[j];
+    tmp_denom_D = (tmp_denom_D < 0) ? -tmp_denom_D:tmp_denom_D;
+    indik_v[j] = (tmp_denom_D < del) ? 0:1;
     if (indik_v[j]) {
-      dB_D[j] = b_numer_D[j] / b_dinom_D[j];
+      dB_D[j] = b_numer_D[j] / b_denom_D[j];
     }
     
     
@@ -69,14 +70,14 @@ SEXP ivsacim_est(NumericVector time,
     for (int i = 0; i < n; i++) {
       B_intD(i, j + 1) += D_status(i, j) * dB_D[j];
       B_intD(i, j + 1) += B_intD(i, j);
-      eps_1(i, j) += Zc[i] * exp(B_intD(i, j)) * (dN(i, j) - risk_t(i, j) * D_status(i, j) * dB_D[j]);
+      eps_1(i, j) += weights[i] * Zc[i] * exp(B_intD(i, j)) * (dN(i, j) - risk_t(i, j) * D_status(i, j) * dB_D[j]);
     }
     
     
     // variance estimate
     if (indik_v[j]) {
       for (int i = 0; i < n; i++) {
-        eps_1(i, j) /= b_dinom_D[j];
+        eps_1(i, j) /= b_denom_D[j];
       }
     }
     else{
@@ -86,7 +87,7 @@ SEXP ivsacim_est(NumericVector time,
     }
     
     
-    // estimation part
+    // estimation part for beta
     beta += risk_cumsum[j] * dB_D[j];
     
     if (j == 0) {
@@ -107,11 +108,11 @@ SEXP ivsacim_est(NumericVector time,
   for (int j = 0; j < k; j++) {
     for (int l = 0; l < j; l++) {
       for (int i = 0; i < n; i++) {
-        H_numer_dot(l, j) += Zc[i] * exp(B_intD(i, j)) * dN(i, j) * D_status(i, l);
-        H_denom_dot(l, j) += Zc[i] * risk_t(i, j) * exp(B_intD(i, j)) * D_status(i, j) * D_status(i, l);
+        H_numer_dot(l, j) += weights[i] * Zc[i] * exp(B_intD(i, j)) * dN(i, j) * D_status(i, l);
+        H_denom_dot(l, j) += weights[i] * Zc[i] * risk_t(i, j) * exp(B_intD(i, j)) * D_status(i, j) * D_status(i, l);
       }
       if (indik_v[j]) {
-        H_dot(l, j) = H_numer_dot(l, j) / b_dinom_D[j] - H_denom_dot(l, j) * b_numer_D[j] / b_dinom_D[j] / b_dinom_D[j];
+        H_dot(l, j) = H_numer_dot(l, j) / b_denom_D[j] - H_denom_dot(l, j) * b_numer_D[j] / b_denom_D[j] / b_denom_D[j];
       }
     }
   }
@@ -125,8 +126,8 @@ SEXP ivsacim_est(NumericVector time,
       }
       for (int i = 0; i < n; i++) {
         if (indik_v[j]) {
-          H_dot_Z(i, j) += exp(B_intD(i, j)) * dN(i, j) / b_dinom_D[j];
-          H_dot_Z(i, j) -= risk_t(i, j) * exp(B_intD(i, j)) * D_status(i, j) * b_numer_D[j] / b_dinom_D[j] / b_dinom_D[j];
+          H_dot_Z(i, j) += weights[i] * exp(B_intD(i, j)) * dN(i, j) / b_denom_D[j];
+          H_dot_Z(i, j) -= weights[i] * risk_t(i, j) * exp(B_intD(i, j)) * D_status(i, j) * b_numer_D[j] / b_denom_D[j] / b_denom_D[j];
         }
         b_D_dot(j1, j) -= H_dot_Z(i, j) * Zc_dot(i, j1);
       }
@@ -140,7 +141,6 @@ SEXP ivsacim_est(NumericVector time,
         tmp -= H_dot(l, j) * eps(i, l);
       }
       eps(i, j) += eps_1(i, j) - tmp;
-      tmp_eps_1(i, j) = eps(i, j);
       tmp = 0;
     }
   }
@@ -148,7 +148,6 @@ SEXP ivsacim_est(NumericVector time,
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < k; j++) {
       for (int j1 = 0; j1 < pdim; j1++) {
-        tmp_eps_2(i, j) += eps_2(i, j1) * b_D_dot(j1, j);
         eps(i, j) += eps_2(i, j1) * b_D_dot(j1, j);
       }
     }
@@ -200,10 +199,8 @@ SEXP ivsacim_est(NumericVector time,
     Named("dN") = dN,
     Named("risk_t") = risk_t,
     Named("indik_v") = indik_v,
-    Named("tmp_eps_1") = tmp_eps_1,
-    Named("tmp_eps_2") = tmp_eps_2,
     Named("b_numer_D") = b_numer_D,
-    Named("b_dinom_D") = b_dinom_D,
+    Named("b_denom_D") = b_denom_D,
     Named("B_intD") = B_intD,
     Named("eps_1") = eps_1,
     Named("eps_2") = eps_2,

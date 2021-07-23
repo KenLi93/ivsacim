@@ -10,7 +10,8 @@
 #' @param max_time the max time that we threshold for nonconstant effect
 #' @param max_time_bet the max time that we threshold for constant effect
 #' @param n_sim the number of resampling, set as 0 if no resampling is needed
-#' @return ivsacim returns an object of class "tivsacim".
+#' @param weights optional weights used in the estimating equation
+#' @return ivsacim returns an object of class "ivsacim".
 #' An object of class "ivsacim" is a list containing the following components:
 #' \item{stime}{an estimate of the baseline hazards function}
 #' \item{dB_D}{an estimate of the increment of the treatment effect}
@@ -44,64 +45,74 @@ ivsacim <- function (time,
                      covar = NULL, 
                      max_time = NULL, 
                      max_time_bet = NULL,
-                     n_sim = 0) {
-  
-  if (is.null(max_time)) {
+                     n_sim = 0,
+                     weights = NULL) {
+  ## generate needed arguments if not provided
+  if (is.null(max_time)) 
     max_time = max(time)
-  }
   
-  if (is.null(treatment_shift_time)) {
+  if (is.null(treatment_shift_time)) 
     treatment_shift_time = rep(0, length(time))
-  }
   
-  stime1 = sort(time)
+  if (is.null(weights))
+    weights <- rep(1, n)
+  
   event_new = event
   event_new[time > max_time] = 0
   stime = sort(time[event_new == 1])
+  weights <- weights/mean(weights)
   
+  ## IV_center is used to compute Z^c in the paper
   iv_centered <- IV_center(instrument, covar)
   Zc <- iv_centered$Zc
-  epstheta <- iv_centered$epstheta
+  epstheta1 <- iv_centered$epstheta
   Edot <- iv_centered$Edot
   pdim <- iv_centered$pdim
   n = length(time)
   k = length(stime)
   D_status <- treatment_status(n, k, stime, treatment_init, treatment_shift_time, max_time) 
-  #pdim <- nrow()
-  
+
   if (IV_valid) {
-    res <- ivsacim_est(time, event, stime, Zc, D_status, epstheta, Edot)
+    res <- ivsacim_est(time, event, stime, Zc, D_status, epstheta1, Edot, weights)
   } 
   else {
-    print("invalid_IV")
+    cat("Currently invalid IV will drop the covariates and fit the model as a randomized trial. Support for covariates is in progress. \n")
+    cat("Currently invalid IV only support binary treatment process, which also implies binary IV. Work in progress for more general cases. \n")
+    cat("Currently we are not supporting for constant effect test or nonzero null test. Work in progress. \n")
+    n_sim <- 0
+    trt_centered <- trt_center(D_status, Z = instrument)
+    D_status_c <- trt_centered$D_status_c
+    epstheta2 <- trt_centered$epstheta
+    
+    res <- invalidivsacim_est(time, event, stime, instrument, Zc, D_status, D_status_c, epstheta1, Edot, weights)
   }
   
   eps = t(res$by_prod$eps)
   k = length(stime < max_time_bet)
   eps = apply(eps, 2, cumsum)
-  eps.beta = res$by_prod$eps_beta
+  eps_beta = res$by_prod$eps_beta
   
   if (n_sim > 0){
-    ant.resamp = n_sim
-    GOF.resam0 = matrix(0, nrow = ant.resamp, ncol = k)
-    max.proc0 = numeric(ant.resamp)
+    ant_resamp = n_sim
+    GOF_resam0 = matrix(0, nrow = ant_resamp, ncol = k)
+    max_proc0 = numeric(ant_resamp)
     ## Const. effect
-    GOF.resam = matrix(0, nrow = ant.resamp, ncol = k)
-    max.proc = CvM.proc = numeric(ant.resamp)
-    eps.const.eff = eps[, ]
+    GOF_resam = matrix(0, nrow = ant_resamp, ncol = k)
+    max_proc = CvM_proc = numeric(ant_resamp)
+    eps_const_eff = eps[, ]
     for(j in 1:k){
-      eps.const.eff[j, ] = eps[j, ] - stime[j] * eps.beta
+      eps_const_eff[j, ] = eps[j, ] - stime[j] * eps_beta
     }
     
-    for(j1 in 1:ant.resamp){
+    for(j1 in 1:ant_resamp){
       G = rnorm(n, 0, 1)
-      tmp.mat0 = eps %*% matrix(G, n, 1)
-      GOF.resam0[j1, ] = c(tmp.mat0)
-      max.proc0[j1] = max(abs(GOF.resam0[j1, ]))
-      tmp.mat = eps.const.eff %*% matrix(G, n, 1)
-      GOF.resam[j1, ] = c(tmp.mat)
-      max.proc[j1] = max(abs(GOF.resam[j1, ]))
-      CvM.proc[j1] = sum(GOF.resam[j1, ]^2 * c(diff(stime), max_time_bet - stime[k]))
+      tmp_mat0 = eps %*% matrix(G, n, 1)
+      GOF_resam0[j1, ] = c(tmp_mat0)
+      max_proc0[j1] = max(abs(GOF_resam0[j1, ]))
+      tmp_mat = eps_const_eff %*% matrix(G, n, 1)
+      GOF_resam[j1, ] = c(tmp_mat)
+      max_proc[j1] = max(abs(GOF_resam[j1, ]))
+      CvM_proc[j1] = sum(GOF_resam[j1, ]^2 * c(diff(stime), max_time_bet - stime[k]))
     }
     
     GOF.proc0 = res$B_D[1:k]
@@ -109,14 +120,14 @@ ivsacim <- function (time,
     GOF.proc = res$B_D[1:k] - res$beta * stime
     max.obs = max(abs(GOF.proc))
     CvM.obs = sum(GOF.proc^2 * c(diff(stime), max_time_bet - stime[k]))
-    pval_0 = sum(max.proc0 > max.obs0)/ant.resamp
-    pval.sup = sum(max.proc > max.obs)/ant.resamp
-    pval.CvM = sum(CvM.proc > CvM.obs)/ant.resamp
+    pval_0 = sum(max_proc0 > max.obs0)/ant_resamp
+    pval.sup = sum(max_proc > max.obs)/ant_resamp
+    pval.CvM = sum(CvM_proc > CvM.obs)/ant_resamp
     res$pval_0 = pval_0
     res$pval_GOF_sup = pval.sup
     res$pval_GOF_CvM = pval.CvM
     if (n_sim > 50){
-      res$GOF.resamp = rbind(stime[1:k], GOF.proc, GOF.resam[1:50, ])
+      res$GOF_resamp = rbind(stime[1:k], GOF.proc, GOF_resam[1:50, ])
     }
   }
   res$by_prod$noresampling = (n_sim <= 0)
@@ -145,7 +156,7 @@ ivsacim <- function (time,
 #' @S3method summary ivsacim
 #' @examples
 #' n = 200
-#' event = rbinom(n, 1, 0.8)
+#' event = rbinom(n, 1, 0.8) 
 #' IV = rbinom(n, 1, 0.5)
 #' trt_init = IV
 #' trt_shift = rep(0, n)
@@ -267,14 +278,14 @@ plot.ivsacim <- function (x, gof = FALSE, ...){
   
   if(gof){
     #par(mfrow=c(1,1))
-    minv = min(c(obj$GOF.resamp[2, ], obj$GOF.resamp[2:22, ]))
-    maxv = max(c(obj$GOF.resamp[2, ], obj$GOF.resamp[2:22, ]))
-    plot(obj$GOF.resamp[1, ], obj$GOF.resamp[2, ], type = "n", ylim = c(minv, maxv), 
+    minv = min(c(obj$GOF_resamp[2, ], obj$GOF_resamp[2:22, ]))
+    maxv = max(c(obj$GOF_resamp[2, ], obj$GOF_resamp[2:22, ]))
+    plot(obj$GOF_resamp[1, ], obj$GOF_resamp[2, ], type = "n", ylim = c(minv, maxv), 
          xlab = "Time", ylab = "Test process", main = "")
     for(j in 1:20){
-      lines(obj$GOF.resamp[1, ], obj$GOF.resamp[2 + j, ], type = "s", col = "grey")   
+      lines(obj$GOF_resamp[1, ], obj$GOF_resamp[2 + j, ], type = "s", col = "grey")   
     }
-    lines(obj$GOF.resamp[1, ], obj$GOF.resamp[2, ], type = "s", lty = 1, lwd = 3)
+    lines(obj$GOF_resamp[1, ], obj$GOF_resamp[2, ], type = "s", lty = 1, lwd = 3)
     abline(0, 0)	
     
   }else{

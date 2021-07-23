@@ -31,7 +31,7 @@ the coeffieients, Z-values and the corresponding P-values.
 }
 \examples{
 n = 200
-event = rbinom(n, 1, 0.8)
+event = rbinom(n, 1, 0.8) 
 IV = rbinom(n, 1, 0.5)
 trt_init = IV
 trt_shift = rep(0, n)

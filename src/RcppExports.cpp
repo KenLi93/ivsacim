@@ -5,9 +5,34 @@
 
 using namespace Rcpp;
 
+#ifdef RCPP_USE_GLOBAL_ROSTREAM
+Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
+Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
+#endif
+
+// invalidivsacim_est
+SEXP invalidivsacim_est(NumericVector time, NumericVector event, NumericVector stime, NumericVector Z, NumericVector Z_c, NumericMatrix D_status, NumericMatrix D_status_c, NumericMatrix eps_2, NumericMatrix Z_c_dot, NumericVector weights);
+RcppExport SEXP _ivsacim_invalidivsacim_est(SEXP timeSEXP, SEXP eventSEXP, SEXP stimeSEXP, SEXP ZSEXP, SEXP Z_cSEXP, SEXP D_statusSEXP, SEXP D_status_cSEXP, SEXP eps_2SEXP, SEXP Z_c_dotSEXP, SEXP weightsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type time(timeSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type event(eventSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type stime(stimeSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type Z_c(Z_cSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type D_status(D_statusSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type D_status_c(D_status_cSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type eps_2(eps_2SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type Z_c_dot(Z_c_dotSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type weights(weightsSEXP);
+    rcpp_result_gen = Rcpp::wrap(invalidivsacim_est(time, event, stime, Z, Z_c, D_status, D_status_c, eps_2, Z_c_dot, weights));
+    return rcpp_result_gen;
+END_RCPP
+}
 // ivsacim_est
-SEXP ivsacim_est(NumericVector time, NumericVector event, NumericVector stime, NumericVector Zc, NumericMatrix D_status, NumericMatrix eps_2, NumericMatrix Zc_dot);
-RcppExport SEXP _ivsacim_ivsacim_est(SEXP timeSEXP, SEXP eventSEXP, SEXP stimeSEXP, SEXP ZcSEXP, SEXP D_statusSEXP, SEXP eps_2SEXP, SEXP Zc_dotSEXP) {
+SEXP ivsacim_est(NumericVector time, NumericVector event, NumericVector stime, NumericVector Zc, NumericMatrix D_status, NumericMatrix eps_2, NumericMatrix Zc_dot, NumericVector weights);
+RcppExport SEXP _ivsacim_ivsacim_est(SEXP timeSEXP, SEXP eventSEXP, SEXP stimeSEXP, SEXP ZcSEXP, SEXP D_statusSEXP, SEXP eps_2SEXP, SEXP Zc_dotSEXP, SEXP weightsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -18,13 +43,15 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericMatrix >::type D_status(D_statusSEXP);
     Rcpp::traits::input_parameter< NumericMatrix >::type eps_2(eps_2SEXP);
     Rcpp::traits::input_parameter< NumericMatrix >::type Zc_dot(Zc_dotSEXP);
-    rcpp_result_gen = Rcpp::wrap(ivsacim_est(time, event, stime, Zc, D_status, eps_2, Zc_dot));
+    Rcpp::traits::input_parameter< NumericVector >::type weights(weightsSEXP);
+    rcpp_result_gen = Rcpp::wrap(ivsacim_est(time, event, stime, Zc, D_status, eps_2, Zc_dot, weights));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_ivsacim_ivsacim_est", (DL_FUNC) &_ivsacim_ivsacim_est, 7},
+    {"_ivsacim_invalidivsacim_est", (DL_FUNC) &_ivsacim_invalidivsacim_est, 10},
+    {"_ivsacim_ivsacim_est", (DL_FUNC) &_ivsacim_ivsacim_est, 8},
     {NULL, NULL, 0}
 };
 
