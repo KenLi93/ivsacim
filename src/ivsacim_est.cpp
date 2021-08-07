@@ -34,19 +34,20 @@ SEXP ivsacim_est(NumericVector time,
   int n = time.size();
   int k = stime.size();
   NumericVector B_D(k), dB_D(k), b_numer_D(k), b_denom_D(k), risk_cumsum(k), indik_v(k);
-  NumericMatrix dN(n, k),  risk_t(n, k), B_intD(n, k + 1);
-  double tmp_denom_D,beta = 0, tot_risk = 0, tmp, beta_se = 0, del = 0.01;
+  NumericMatrix dN(n, k), risk_t(n, k), B_intD(n, k + 1);
+  double tmp_denom_D = 0, beta = 0, tot_risk = 0, tmp = 0, beta_se = 0, del = 0.01;
+  NumericVector B_D_se(k), eps_beta(n);
   
+
   // variables for variance estimate
   int pdim = Zc_dot.ncol();
-  NumericVector B_D_se(k), eps_beta(n);
   // eps is the influence function of d\hat B_D(t_1), ..., d\hat B_D(t_M)
   NumericMatrix b_var_est(k, k), eps_1(n, k), eps(n, k), b_D_dot(pdim, k);
   //H_dot is the derivative matrix of H against dB_D(t)
   NumericMatrix H_numer_dot(k, k), H_denom_dot(k, k), H_dot_Z(n, k), H_dot(k, k);
 
   for (int j = 0; j < k; j++) {
-    
+
     for (int i = 0; i < n; i++) {
       // estimation
       dN(i, j) = (time[i] == stime[j]) ? 1:0;
@@ -56,24 +57,24 @@ SEXP ivsacim_est(NumericVector time,
       b_numer_D[j] += weights[i] * Zc[i] * exp(B_intD(i, j)) * dN(i, j);
       b_denom_D[j] += weights[i] * Zc[i] * risk_t(i, j) * exp(B_intD(i, j)) * D_status(i, j);
     }
-    
-    
+
+
     tmp_denom_D = b_denom_D[j];
     tmp_denom_D = (tmp_denom_D < 0) ? -tmp_denom_D:tmp_denom_D;
     indik_v[j] = (tmp_denom_D < del) ? 0:1;
     if (indik_v[j]) {
       dB_D[j] = b_numer_D[j] / b_denom_D[j];
     }
-    
-    
+
+
     // estimation
     for (int i = 0; i < n; i++) {
       B_intD(i, j + 1) += D_status(i, j) * dB_D[j];
       B_intD(i, j + 1) += B_intD(i, j);
       eps_1(i, j) += weights[i] * Zc[i] * exp(B_intD(i, j)) * (dN(i, j) - risk_t(i, j) * D_status(i, j) * dB_D[j]);
     }
-    
-    
+
+
     // variance estimate
     if (indik_v[j]) {
       for (int i = 0; i < n; i++) {
@@ -85,11 +86,11 @@ SEXP ivsacim_est(NumericVector time,
         eps_1(i, j) = 0;
       }
     }
-    
-    
+
+
     // estimation part for beta
     beta += risk_cumsum[j] * dB_D[j];
-    
+
     if (j == 0) {
       B_D[j] = 0 + dB_D[j];
       tot_risk += risk_cumsum[j] * (stime[j] - 0);
@@ -98,12 +99,12 @@ SEXP ivsacim_est(NumericVector time,
       B_D[j] = B_D[j - 1] + dB_D[j];
       tot_risk += risk_cumsum[j] * (stime[j] - stime[j - 1]);
     }
-    
+
   }
-  
+
   // time invariant intensity
   beta /= tot_risk;
-  
+
   // variance estimate
   for (int j = 0; j < k; j++) {
     for (int l = 0; l < j; l++) {
@@ -116,9 +117,9 @@ SEXP ivsacim_est(NumericVector time,
       }
     }
   }
-  
-  
-  
+
+
+
   for (int j = 0; j < k; j++) {
     for (int j1 = 0; j1 < pdim; j1++){
       for (int l = 0; l < j; l++) {
@@ -133,8 +134,8 @@ SEXP ivsacim_est(NumericVector time,
       }
     }
   }
-  
-  
+
+
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < k; j++) {
       for (int l = 0; l < j; l++) {
@@ -144,7 +145,7 @@ SEXP ivsacim_est(NumericVector time,
       tmp = 0;
     }
   }
-  
+
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < k; j++) {
       for (int j1 = 0; j1 < pdim; j1++) {
@@ -152,15 +153,15 @@ SEXP ivsacim_est(NumericVector time,
       }
     }
   }
-  
+
   for (int i = 0; i < n; i++) {
     for (int j = 0; j < k; j++) {
       eps_beta[i] += eps(i, j) * risk_cumsum[j];
     }
     eps_beta[i] /= tot_risk;
   }
-  
-  
+
+
   for (int j = 0; j < k; j++) {
     for (int l = 0; l < k; l++) {
       for (int i = 0; i < n; i++) {
@@ -168,9 +169,9 @@ SEXP ivsacim_est(NumericVector time,
       }
     }
   }
-  
-  
-  
+
+
+
   for (int j = 0; j < k; j++) {
     for (int l = 0; l < j; l++) {
       B_D_se[j] += b_var_est(l, j);
@@ -183,17 +184,17 @@ SEXP ivsacim_est(NumericVector time,
       B_D_se[j] += B_D_se[j - 1];
     }
   }
-  
+
   for (int j = 0; j < k; j++) {
     B_D_se[j] = sqrt(B_D_se[j]);
   }
-  
+
   for (int i = 0; i < n; i++) {
     beta_se += eps_beta[i] * eps_beta[i];
   }
-  
+
   beta_se = sqrt(beta_se);
-  
+
   List by_prod = List::create(
     Named("Zc") = Zc,
     Named("dN") = dN,
@@ -218,4 +219,7 @@ SEXP ivsacim_est(NumericVector time,
     Named("B_D_se") = B_D_se,
     Named("beta_se") = beta_se,
     Named("by_prod") = by_prod);
+  
 }
+
+

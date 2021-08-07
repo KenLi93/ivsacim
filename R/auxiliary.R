@@ -53,15 +53,15 @@ IV_center <- function (Z, L = NULL) {
 #' @keywords internal
 #' @export
 treatment_status <- function (n,
-                              K,
+                              k,
                               stime, 
                               treatment_init, 
                               treatment_shift_time, 
-                              max.time) {
+                              max_time) {
 
-  D_status <- matrix(0, ncol = K, nrow = n)
+  D_status <- matrix(0, ncol = k, nrow = n)
   for (i in 1:n) {
-    if (treatment_shift_time[i] <= 0 || treatment_shift_time[i] >= max.time) {
+    if (treatment_shift_time[i] <= 0 || treatment_shift_time[i] >= max_time) {
       D_status[i, ] = treatment_init[i]
       next
     }

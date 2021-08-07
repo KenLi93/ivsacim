@@ -1,8 +1,8 @@
-7222e23155432b6b0d942d555af01da6 *DESCRIPTION
+30946a748206379d37e705690307146c *DESCRIPTION
 96c89ff591e3d70d63a7329df78e1e85 *NAMESPACE
 3510cb20bc45ec291b3d9a8cf6092f7b *R/RcppExports.R
-2c54ed97e27911288383bb13e40213c4 *R/auxiliary.R
-55b7d55497566fa24c3ef37e37ec2b87 *R/ivsacim.R
+f13b147ac71d2d73216ad695c771b14b *R/auxiliary.R
+2890de5454d88f741af73ec47e37c64a *R/ivsacim.R
 508b1c6bb65d6036afccd5bb1ee9d7f6 *R/zzz.R
 a1c8fe833484352bb7ca314fcd44f4a0 *man/IV_center.Rd
 032bcfccf233607cbbad540caec88ea4 *man/invalidivsacim_est.Rd
@@ -10,8 +10,8 @@ a1c8fe833484352bb7ca314fcd44f4a0 *man/IV_center.Rd
 c0bd921f0c48a2f90980e63c80054bc7 *man/ivsacim_est.Rd
 00a605411a81e320a7009f88d2bb2aeb *man/plot.ivsacim.Rd
 a544a59782ffe63a8378bd23aade5419 *man/summary.ivsacim.Rd
-486fa110b9590227d7e32d35608fd04e *man/treatment_status.Rd
+b63a31581c725db635af41378ece6f4b *man/treatment_status.Rd
 f8095f8ceb0b1bfdeb860be1c5b30da5 *man/trt_center.Rd
 740e0139142d526a6e5f0f733d7cfd5e *src/RcppExports.cpp
 09368a96f5081b94a9a9de363b8fbb54 *src/invalidivsacim_est.cpp
-bc8153e59677a4451ba2ae0a45238348 *src/ivsacim_est.cpp
+32c8fa82420d952e691c5d569324fad7 *src/ivsacim_est.cpp

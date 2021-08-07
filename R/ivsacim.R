@@ -34,8 +34,8 @@
 #' max_t = 3
 #' max_t_bet = 3
 #' n_sim = 0
-#' fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, 
-#' trt_shift, covar = NULL, max_t, max_t_bet, n_sim)
+#' fit <- ivsacim(time = time, event = event, instrument = IV, IV_valid = TRUE, treatment_init = trt_init, 
+#' treatment_shift_time = trt_shift, covar = NULL, max_time = max_t, max_time_bet = max_t_bet, n_sim = n_sim)
 ivsacim <- function (time, 
                      event, 
                      instrument,
@@ -55,7 +55,7 @@ ivsacim <- function (time,
     treatment_shift_time = rep(0, length(time))
   
   if (is.null(weights))
-    weights <- rep(1, n)
+    weights <- rep(1, length(time))
   
   event_new = event
   event_new[time > max_time] = 0
@@ -68,9 +68,9 @@ ivsacim <- function (time,
   epstheta1 <- iv_centered$epstheta
   Edot <- iv_centered$Edot
   pdim <- iv_centered$pdim
-  n = length(time)
-  k = length(stime)
-  D_status <- treatment_status(n, k, stime, treatment_init, treatment_shift_time, max_time) 
+  n <- length(time)
+  k <- length(stime)
+  D_status <- treatment_status(n = n, k = k, stime = stime, treatment_init = treatment_init, treatment_shift_time = treatment_shift_time, max_time = max_time) 
 
   if (IV_valid) {
     res <- ivsacim_est(time, event, stime, Zc, D_status, epstheta1, Edot, weights)
