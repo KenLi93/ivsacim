@@ -11,7 +11,6 @@ ivsacim(
   IV_valid = TRUE,
   treatment_init,
   treatment_shift_time = NULL,
-  covar = NULL,
   max_time = NULL,
   max_time_bet = NULL,
   n_sim = 0,
@@ -31,8 +30,6 @@ ivsacim(
 
 \item{treatment_shift_time}{the shift time of each subject, if no shift for a subject, set as 0}
 
-\item{covar}{the baseline covariates}
-
 \item{max_time}{the max time that we threshold for nonconstant effect}
 
 \item{max_time_bet}{the max time that we threshold for constant effect}
@@ -47,16 +44,16 @@ An object of class "ivsacim" is a list containing the following components:
 \item{stime}{an estimate of the baseline hazards function}
 \item{dB_D}{an estimate of the increment of the treatment effect}
 \item{B_D}{an estimate of the treatment effect}
-\item{beta}{an estimate of the constant treatment effect}
+\item{beta_D}{an estimate of the constant treatment effect}
 \item{B_D_se}{an estimate of the variance covariance matrix of B_D}
-\item{beta_se}{an estimate of the constant treatment effect}
+\item{beta_D_se}{an estimate of the constant treatment effect}
 \item{by_prod}{a byproduct, that will used by other functions}
 }
 \description{
 ivsacim is used to fit cumulative intensity models for exposure effects with instrumental variables.
 }
 \examples{
-n = 200
+n = 400
 event = rbinom(n, 1, 0.8)
 IV = rbinom(n, 1, 0.5)
 trt_init = IV
@@ -65,6 +62,6 @@ time = rexp(n)/(0.5 + trt_init * 0.2)
 max_t = 3
 max_t_bet = 3
 n_sim = 0
-fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, 
-trt_shift, covar = NULL, max_t, max_t_bet, n_sim)
+fit <- ivsacim(time, event, IV, TRUE, trt_init, 
+trt_shift, max_t, max_t_bet, n_sim)
 }

@@ -4,7 +4,7 @@
 \alias{trt_center}
 \title{This function is to compute the centralized treatment process given the covariates Z, L at each sorted unique event time}
 \usage{
-trt_center(D_status, Z, L = NULL)
+trt_center(D_status, Z, weights)
 }
 \description{
 This function is to compute the centralized treatment process given the covariates Z, L at each sorted unique event time

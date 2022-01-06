@@ -21,7 +21,7 @@ The function will plot the estimated cumulative intensity function of the treatm
 Corresponding pointwise confidence intervals at level alpha are also included.
 }
 \examples{
-n = 200
+n = 400
 event = rbinom(n, 1, 0.8)
 IV = rbinom(n, 1, 0.5)
 trt_init = IV
@@ -30,8 +30,7 @@ time = rexp(n)/(0.5 + trt_init * 0.2)
 max_t = 3
 max_t_bet = 3
 n_sim = 100
-fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, 
-trt_shift, covar = NULL, max_t, max_t_bet, n_sim)
+fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, trt_shift, max_t, max_t_bet, n_sim)
 plot(fit, main = "", xlab = "Time", ylab = "Cumulative Intensity Function")
 plot(fit, gof = TRUE, xlab = "Time", ylab = "")
 }

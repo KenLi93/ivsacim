@@ -6,14 +6,12 @@
 \title{Summarizing Cumulative Intensity Function of Treatment with Instrumental Variables 
 Estimation Using Structural Additive Cumulative Intensity Models}
 \usage{
-\method{summary}{ivsacim}(object, digits = 3, ...)
+\method{summary}{ivsacim}(object, ...)
 
-\method{print}{summary.ivsacim}(x, digits = 3, ...)
+\method{print}{summary.ivsacim}(x, ...)
 }
 \arguments{
 \item{object}{an object of class "ivsacim", usually, a result of a call to ivsacim.}
-
-\item{digits}{number of digits we want to show}
 
 \item{...}{further arguments passed to or from other methods.}
 
@@ -30,7 +28,7 @@ print.summary.ivsacim tries to be smart about formatting coefficients, an estima
 the coeffieients, Z-values and the corresponding P-values.
 }
 \examples{
-n = 200
+n = 400
 event = rbinom(n, 1, 0.8) 
 IV = rbinom(n, 1, 0.5)
 trt_init = IV
@@ -39,7 +37,6 @@ time = rexp(n)/(0.5 + trt_init * 0.2)
 max_t = 3
 max_t_bet = 3
 n_sim = 0
-fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, 
-trt_shift, covar = NULL, max_t, max_t_bet, n_sim)
+fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, trt_shift, max_t, max_t_bet, n_sim)
 summary(fit)
 }

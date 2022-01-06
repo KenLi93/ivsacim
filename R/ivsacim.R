@@ -6,7 +6,6 @@
 #' @param IV_valid whether assuming IV satisfies the exclusion restriction
 #' @param treatment_init the initial treatment assignment
 #' @param treatment_shift_time the shift time of each subject, if no shift for a subject, set as 0
-#' @param covar the baseline covariates
 #' @param max_time the max time that we threshold for nonconstant effect
 #' @param max_time_bet the max time that we threshold for constant effect
 #' @param n_sim the number of resampling, set as 0 if no resampling is needed
@@ -16,16 +15,14 @@
 #' \item{stime}{an estimate of the baseline hazards function}
 #' \item{dB_D}{an estimate of the increment of the treatment effect}
 #' \item{B_D}{an estimate of the treatment effect}
-#' \item{beta}{an estimate of the constant treatment effect}
+#' \item{beta_D}{an estimate of the constant treatment effect}
 #' \item{B_D_se}{an estimate of the variance covariance matrix of B_D}
-#' \item{beta_se}{an estimate of the constant treatment effect}
+#' \item{beta_D_se}{an estimate of the constant treatment effect}
 #' \item{by_prod}{a byproduct, that will used by other functions}
-#' @importFrom stats fitted glm lm predict qnorm residuals vcov rnorm
-#' @importFrom lava iid
-#' @importFrom survival survfit
+#' @importFrom stats rnorm
 #' @export ivsacim
 #' @examples
-#' n = 200
+#' n = 400
 #' event = rbinom(n, 1, 0.8)
 #' IV = rbinom(n, 1, 0.5)
 #' trt_init = IV
@@ -34,15 +31,14 @@
 #' max_t = 3
 #' max_t_bet = 3
 #' n_sim = 0
-#' fit <- ivsacim(time = time, event = event, instrument = IV, IV_valid = TRUE, treatment_init = trt_init, 
-#' treatment_shift_time = trt_shift, covar = NULL, max_time = max_t, max_time_bet = max_t_bet, n_sim = n_sim)
+#' fit <- ivsacim(time, event, IV, TRUE, trt_init, 
+#' trt_shift, max_t, max_t_bet, n_sim)
 ivsacim <- function (time, 
                      event, 
                      instrument,
                      IV_valid = TRUE,
                      treatment_init, 
                      treatment_shift_time = NULL, 
-                     covar = NULL, 
                      max_time = NULL, 
                      max_time_bet = NULL,
                      n_sim = 0,
@@ -60,81 +56,115 @@ ivsacim <- function (time,
   event_new = event
   event_new[time > max_time] = 0
   stime = sort(time[event_new == 1])
-  weights <- weights/mean(weights)
+  weights <- weights / mean(weights)
   
   ## IV_center is used to compute Z^c in the paper
-  iv_centered <- IV_center(instrument, covar)
-  Zc <- iv_centered$Zc
-  epstheta1 <- iv_centered$epstheta
-  Edot <- iv_centered$Edot
-  pdim <- iv_centered$pdim
-  n <- length(time)
-  k <- length(stime)
-  D_status <- treatment_status(n = n, k = k, stime = stime, treatment_init = treatment_init, treatment_shift_time = treatment_shift_time, max_time = max_time) 
+  iv_centered <- IV_center(instrument, weights)
+  Zc <- matrix(iv_centered$Zc)
+  Z_model_mat <- matrix(iv_centered$Z_model_mat)
+  eps_1 <- matrix(iv_centered$epstheta, nrow = 1)
+  N <- length(time)
+  K <- length(stime)
+  D_status <- treatment_status(N = N, K = K, stime = stime, treatment_init = treatment_init, treatment_shift_time = treatment_shift_time, max_time = max_time) 
 
   if (IV_valid) {
-    res <- ivsacim_est(time, event, stime, Zc, D_status, epstheta1, Edot, weights)
+    res <- ivsacim_est(time, 
+                       event, 
+                       stime, 
+                       Zc, 
+                       D_status, 
+                       eps_1, 
+                       Z_model_mat, 
+                       weights)
   } 
   else {
-    cat("Currently invalid IV will drop the covariates and fit the model as a randomized trial. Support for covariates is in progress. \n")
-    cat("Currently invalid IV only support binary treatment process, which also implies binary IV. Work in progress for more general cases. \n")
-    cat("Currently we are not supporting for constant effect test or nonzero null test. Work in progress. \n")
-    n_sim <- 0
-    trt_centered <- trt_center(D_status, Z = instrument)
+    trt_centered <- trt_center(D_status, Z = instrument, weights)
     D_status_c <- trt_centered$D_status_c
-    epstheta2 <- trt_centered$epstheta
-    
-    res <- invalidivsacim_est(time, event, stime, instrument, Zc, D_status, D_status_c, epstheta1, Edot, weights)
+    D_model_mat <- trt_centered$D_model_mat
+    eps_2 <- trt_centered$epstheta
+    res <- invalidivsacim_est(time, 
+                              event, 
+                              stime, 
+                              instrument, 
+                              Zc, 
+                              D_status, 
+                              D_status_c, 
+                              Z_model_mat = Z_model_mat,
+                              eps_1 = eps_1, 
+                              D_model_mat = D_model_mat,
+                              eps_2 = eps_2,
+                              weights)
   }
   
-  eps = t(res$by_prod$eps)
+  res$invalid_IV <- IV_valid
+  B_D_IF = res$by_prod$B_D_IF
   k = length(stime < max_time_bet)
-  eps = apply(eps, 2, cumsum)
-  eps_beta = res$by_prod$eps_beta
+  beta_D_IF = res$by_prod$beta_D_IF
   
   if (n_sim > 0){
-    ant_resamp = n_sim
-    GOF_resam0 = matrix(0, nrow = ant_resamp, ncol = k)
-    max_proc0 = numeric(ant_resamp)
+    GOF_resam0_D = matrix(0, nrow = n_sim, ncol = K)
+    max_proc0 = numeric(n_sim)
     ## Const. effect
-    GOF_resam = matrix(0, nrow = ant_resamp, ncol = k)
-    max_proc = CvM_proc = numeric(ant_resamp)
-    eps_const_eff = eps[, ]
-    for(j in 1:k){
-      eps_const_eff[j, ] = eps[j, ] - stime[j] * eps_beta
+    GOF_resam_D = matrix(0, nrow = n_sim, ncol = K)
+    max_proc = CvM_proc = numeric(n_sim)
+    eps_const_eff = B_D_IF
+    for(j in 1:K){
+      eps_const_eff[j, ] = B_D_IF[j, ] - stime[j] * beta_D_IF
     }
     
-    for(j1 in 1:ant_resamp){
-      G = rnorm(n, 0, 1)
-      tmp_mat0 = eps %*% matrix(G, n, 1)
-      GOF_resam0[j1, ] = c(tmp_mat0)
-      max_proc0[j1] = max(abs(GOF_resam0[j1, ]))
-      tmp_mat = eps_const_eff %*% matrix(G, n, 1)
-      GOF_resam[j1, ] = c(tmp_mat)
-      max_proc[j1] = max(abs(GOF_resam[j1, ]))
-      CvM_proc[j1] = sum(GOF_resam[j1, ]^2 * c(diff(stime), max_time_bet - stime[k]))
+    for(j1 in 1:n_sim){
+      Q = rnorm(N, 0, 1)
+      GOF_resam0_D[j1, ] = B_D_IF %*% Q
+      max_proc0[j1] = max(abs(GOF_resam0_D[j1, ]))
+      GOF_resam_D[j1, ] = eps_const_eff %*% Q
+      max_proc[j1] = max(abs(GOF_resam_D[j1, ]))
     }
-    
-    GOF.proc0 = res$B_D[1:k]
-    max.obs0 = max(abs(GOF.proc0))
-    GOF.proc = res$B_D[1:k] - res$beta * stime
-    max.obs = max(abs(GOF.proc))
-    CvM.obs = sum(GOF.proc^2 * c(diff(stime), max_time_bet - stime[k]))
-    pval_0 = sum(max_proc0 > max.obs0)/ant_resamp
-    pval.sup = sum(max_proc > max.obs)/ant_resamp
-    pval.CvM = sum(CvM_proc > CvM.obs)/ant_resamp
-    res$pval_0 = pval_0
-    res$pval_GOF_sup = pval.sup
-    res$pval_GOF_CvM = pval.CvM
+    GOF.proc = res$B_D[1:k] - res$beta_D * stime
+    max_B_D_null = max(abs(res$B_D))
+    max_B_D_const = max(abs(res$B_D - res$beta_D * stime))
+    pval_D_null = sum(max_proc0 > max_B_D_null)/n_sim
+    pval_D_const = sum(max_proc > max_B_D_const)/n_sim
+    res$pval_D_null = pval_D_null
+    res$pval_D_const = pval_D_const
     if (n_sim > 50){
-      res$GOF_resamp = rbind(stime[1:k], GOF.proc, GOF_resam[1:50, ])
+      res$GOF_resamp_D = rbind(stime[1:K], GOF.proc, GOF_resam_D[1:50, ])
+    }
+    
+    if(!IV_valid) {
+      B_Z_IF = res$by_prod$B_Z_IF
+      ## Const. effect
+      GOF_resam = matrix(0, nrow = n_sim, ncol = K)
+      max_proc = CvM_proc = numeric(n_sim)
+      eps_const_eff = B_Z_IF
+      for(j in 1:K){
+        eps_const_eff[j, ] = B_D_IF[j, ] - stime[j] * beta_D_IF
+      }
+      
+      GOF_resam0_Z = matrix(0, nrow = n_sim, ncol = K)
+      GOF_resam_Z = matrix(0, nrow = n_sim, ncol = K)
+      max_proc0 = numeric(n_sim)
+      max_proc = numeric(n_sim)
+      
+      for(j1 in 1:n_sim){
+        Q = rnorm(N, 0, 1)
+        GOF_resam0_Z[j1, ] = B_Z_IF %*% Q
+        max_proc0[j1] = max(abs(GOF_resam0_Z[j1, ]))
+        GOF_resam_Z[j1, ] = eps_const_eff %*% Q
+        max_proc[j1] = max(abs(GOF_resam_Z[j1, ]))
+      }
+      max_B_Z_null = max(abs(res$B_Z))
+      max_B_Z_const = max(abs(res$B_Z - res$beta_Z * stime))
+      pval_Z_null = sum(max_proc0 > max_B_Z_null)/n_sim
+      pval_Z_const = sum(max_proc > max_B_Z_const)/n_sim
+      res$pval_Z_null = pval_Z_null
+      res$pval_Z_const = pval_Z_const
     }
   }
   res$by_prod$noresampling = (n_sim <= 0)
   res$by_prod$max_time = max_time
   res$by_prod$max_time_bet = max_time_bet
   res$by_prod$D_status = D_status
-  res$by_prod$k = k
+  res$by_prod$K = K
   class(res) <- "ivsacim"
   return(res)
   
@@ -155,7 +185,7 @@ ivsacim <- function (time,
 #' @method summary ivsacim
 #' @S3method summary ivsacim
 #' @examples
-#' n = 200
+#' n = 400
 #' event = rbinom(n, 1, 0.8) 
 #' IV = rbinom(n, 1, 0.5)
 #' trt_init = IV
@@ -164,23 +194,33 @@ ivsacim <- function (time,
 #' max_t = 3
 #' max_t_bet = 3
 #' n_sim = 0
-#' fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, 
-#' trt_shift, covar = NULL, max_t, max_t_bet, n_sim)
+#' fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, trt_shift, max_t, max_t_bet, n_sim)
 #' summary(fit)
 #' @details print.summary.ivsacim tries to be smart about formatting coefficients, an estimated variance covariance matrix of
 #' the coeffieients, Z-values and the corresponding P-values.
 #' @return The function summary.ivsacim computes and returns a list of summary statistics of the fitted model given in object.
-summary.ivsacim <- function(object, digits = 3, ...){
+summary.ivsacim <- function(object, ...){
   obj <- object
-  chisq_beta = (obj$beta/obj$beta_se)^2
-  pval_beta = 1 - pchisq(chisq_beta, df = 1)
+  digits = 3
+  chisq_beta_D = (obj$beta_D/obj$beta_D_se)^2
+  pval_beta_D = 1 - pchisq(chisq_beta_D, df = 1)
+  chisq_beta_Z = (obj$beta_Z/obj$beta_Z_se)^2
+  pval_beta_Z = 1 - pchisq(chisq_beta_Z, df = 1)
   
   res <- list()
-  res$pval_0 = obj$pval_0
-  res$beta = obj$beta
-  res$beta_se = obj$beta_se
-  res$pval_beta = pval_beta
-  res$pval_GOF_sup = obj$pval_GOF_sup
+  res$pval_D_null = obj$pval_D_null
+  res$beta_D = obj$beta_D
+  res$beta_D_se = obj$beta_D_se
+  res$pval_beta_D = pval_beta_D
+  res$pval_D_const = obj$pval_D_const
+  res$invalid_IV <- obj$invalid_IV
+  if (!res$invalid_IV) {
+    res$pval_Z_null = obj$pval_Z_null
+    res$beta_Z = obj$beta_Z
+    res$beta_Z_se = obj$beta_Z_se
+    res$pval_beta_Z = pval_beta_Z
+    res$pval_Z_const = obj$pval_Z_const
+  }
   if (obj$by_prod$noresampling) {
     res$noresult = TRUE
   }
@@ -193,50 +233,73 @@ summary.ivsacim <- function(object, digits = 3, ...){
 
 
 #' @rdname summary.ivsacim
-#' @param digits number of digits we want to show
 #' @S3method print summary.ivsacim
-print.summary.ivsacim <- function(x, digits = 3, ...){
+print.summary.ivsacim <- function(x, ...){
   obj <- x
+  digits <- 3
   # We print information about object:  
   cat("   \n")
-  cat("Instrumental Variables Structural Additive Cumulative Intensity Model \n\n")
+  cat("Instrumental Variables Structural Additive Cumulative Intensity Model")
+  if (!obj$invalid_IV) {
+    cat(" with an Invalid IV\n\n")
+  } else {
+    cat(" with a Valid IV\n\n")
+  }
   if (!obj$noresult) { 
-    
-    #if (sum(obj$conf.band)==FALSE)  mtest<-FALSE else mtest<-TRUE; 
-    #if (mtest==FALSE) cat("Test not computed, sim=0 \n\n")
-    #if (mtest==TRUE) { 
-    test0 <- cbind(obj$pval_0)
-    #testC<-cbind(obj$obs.testBeqC,obj$pval.testBeqC) 
+    test0 <- cbind(obj$pval_D_null)
     colnames(test0) <- c("Supremum-test pval")
-    #rownames(test0)<-colnames(prop.excess.object$cum)[-1]
     rownames(test0) <- c("Exposure")
-    #rownames(test0)<- c("Exposure")
-    #colnames(testC)<- c("sup| B(t) - (t/tau)B(tau)|","p-value H_0: B(t)=b t")  
+
     cat("Test for non-significant exposure effect. H_0: B_D(t) = 0 \n")
     cat("   \n")
-    #cat("Test for non-parametric term, H_0: B(t)=0  \n")
     prmatrix(signif(test0, digits))
     cat("   \n")
     cat("\n")
-    test_gof = cbind(obj$pval_GOF_sup)
+    test_gof = cbind(obj$pval_D_const)
     colnames(test_gof) <- c("Supremum-test pval")
     rownames(test_gof) <- c("        ")
-    cat("Goodness-of-fit test for constant effects model\n")
+    cat("Goodness-of-fit test for constant effects model. H_0: B_D(t) = beta_D * t\n")
     prmatrix(signif(test_gof, digits))
     cat("   \n")
     
   }
   
-  cat("Constant effect model  \n")
-  res <- cbind(obj$beta, obj$beta_se)#,diag(obj$robvar.gamma)^.5,diag(obj$D2linv)^.5)
-  z <- obj$beta/obj$beta_se
-  pval <- obj$pval_beta
+  cat("Constant effect model: B_D(t) = beta_D * t \n")
+  res <- cbind(obj$beta_D, obj$beta_D_se)
+  z <- obj$beta_D/obj$beta_D_se
+  pval <- obj$pval_beta_D
   res <- cbind(res, z, pval)
   rownames(res) <- c("Exposure     ")
-  colnames(res) <- c("coef", "se(coef)", "z", "p")#,#Robust Std.  Error","D2log(L)^-(1/2)")  
+  colnames(res) <- c("coef", "se(coef)", "z-value", "p-value")
   prmatrix(signif(res, digits))
   cat("   \n") 
-  
+  if (!obj$invalid_IV) {
+    if (!obj$noresult) { 
+      test0 <- cbind(obj$pval_Z_null)
+      colnames(test0) <- c("Supremum-test pval")
+      rownames(test0) <- c("Instrument")
+      cat("Test for exclusion restriction. H_0: B_Z(t) = 0 \n")
+      cat("   \n")
+      prmatrix(signif(test0, digits))
+      cat("   \n")
+      cat("\n")
+      test_gof = cbind(obj$pval_Z_const)
+      colnames(test_gof) <- c("Supremum-test pval")
+      rownames(test_gof) <- c("        ")
+      cat("Goodness-of-fit test for constant effects model. H_0: B_Z(t) = beta_Z * t\n")
+      prmatrix(signif(test_gof, digits))
+      cat("   \n")
+    }
+    cat("Constant effect model: B_Z(t) = beta_Z * t \n")
+    res <- cbind(obj$beta_Z, obj$beta_Z_se)
+    z <- obj$beta_Z/obj$beta_Z_se
+    pval <- obj$pval_beta_Z
+    res <- cbind(res, z, pval)
+    rownames(res) <- c("Instrument     ")
+    colnames(res) <- c("coef", "se(coef)", "z-value", "p-value")
+    prmatrix(signif(res, digits))
+    cat("   \n") 
+  }
   
   #cat("  Call: ")
   #dput(attr(obj, "Call"))
@@ -252,12 +315,12 @@ print.summary.ivsacim <- function(x, digits = 3, ...){
 #' Corresponding pointwise confidence intervals at level alpha are also included.
 #' @export ivsacim
 #' @export plot.ivsacim
-#' @importFrom graphics plot lines abline
+#' @importFrom graphics plot lines abline par
 #' @method plot ivsacim
 #' @S3method plot ivsacim
 #' @return No return value, called for side effects
 #' @examples
-#' n = 200
+#' n = 400
 #' event = rbinom(n, 1, 0.8)
 #' IV = rbinom(n, 1, 0.5)
 #' trt_init = IV
@@ -266,8 +329,7 @@ print.summary.ivsacim <- function(x, digits = 3, ...){
 #' max_t = 3
 #' max_t_bet = 3
 #' n_sim = 100
-#' fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, 
-#' trt_shift, covar = NULL, max_t, max_t_bet, n_sim)
+#' fit <- ivsacim(time, event, IV, IV_valid = TRUE, trt_init, trt_shift, max_t, max_t_bet, n_sim)
 #' plot(fit, main = "", xlab = "Time", ylab = "Cumulative Intensity Function")
 #' plot(fit, gof = TRUE, xlab = "Time", ylab = "")
 plot.ivsacim <- function (x, gof = FALSE, ...){
@@ -280,8 +342,7 @@ plot.ivsacim <- function (x, gof = FALSE, ...){
     #par(mfrow=c(1,1))
     minv = min(c(obj$GOF_resamp[2, ], obj$GOF_resamp[2:22, ]))
     maxv = max(c(obj$GOF_resamp[2, ], obj$GOF_resamp[2:22, ]))
-    plot(obj$GOF_resamp[1, ], obj$GOF_resamp[2, ], type = "n", ylim = c(minv, maxv), 
-         xlab = "Time", ylab = "Test process", main = "")
+    plot(obj$GOF_resamp[1, ], obj$GOF_resamp[2, ], type = "n", ylim = c(minv, maxv), ...)
     for(j in 1:20){
       lines(obj$GOF_resamp[1, ], obj$GOF_resamp[2 + j, ], type = "s", col = "grey")   
     }
@@ -289,22 +350,59 @@ plot.ivsacim <- function (x, gof = FALSE, ...){
     abline(0, 0)	
     
   }else{
-    B_D <- obj$B_D
-    B_D_se <- obj$B_D_se
-    beta = obj$beta
-    beta_se = obj$beta_se
-    stime = obj$stime
-    minv1 = min(c(B_D - 1.96 * B_D_se, beta * stime))
-    maxv1 = max(c(B_D + 1.96 * B_D_se, beta * stime))
-    
-    #par(mfrow=c(1,1))
-    plot(stime, B_D, type = "s", ylim = c(minv1, maxv1), xlab = "Time", ylab = "Cumulative regression function", main = "")
-    lines(stime, c(B_D + 1.96 * B_D_se), type = 's', lty = 2)
-    lines(stime, c(B_D - 1.96 * B_D_se), type = 's', lty = 2)
-    abline(0, 0)
-    lines(stime, beta * stime)
-    lines(stime, (beta + 1.96 * beta_se) * stime, lty = 2)
-    lines(stime, (beta - 1.96 * beta_se) * stime, lty = 2)
+    if (obj$invalid_IV) {
+      B_D <- obj$B_D
+      B_D_se <- obj$B_D_se
+      beta = obj$beta_D
+      beta_se = obj$beta_D_se
+      stime = obj$stime
+      minv1 = min(c(B_D - 1.96 * B_D_se, beta * stime))
+      maxv1 = max(c(B_D + 1.96 * B_D_se, beta * stime))
+      
+      #par(mfrow=c(1,1))
+      plot(stime, B_D, type = "s", ylim = c(minv1, maxv1), ...)
+      lines(stime, c(B_D + 1.96 * B_D_se), type = 's', lty = 2)
+      lines(stime, c(B_D - 1.96 * B_D_se), type = 's', lty = 2)
+      abline(0, 0)
+      lines(stime, beta * stime)
+      lines(stime, (beta + 1.96 * beta_se) * stime, lty = 2)
+      lines(stime, (beta - 1.96 * beta_se) * stime, lty = 2)
+    } else {
+      par(mfrow=c(1,2))
+      B_D <- obj$B_D
+      B_D_se <- obj$B_D_se
+      beta_D = obj$beta_D
+      beta_D_se = obj$beta_D_se
+      stime = obj$stime
+      minv1 = min(c(B_D - 1.96 * B_D_se, beta_D * stime))
+      maxv1 = max(c(B_D + 1.96 * B_D_se, beta_D * stime))
+      
+      #par(mfrow=c(1,1))
+      plot(stime, B_D, type = "s", ylim = c(minv1, maxv1), ...)
+      lines(stime, c(B_D + 1.96 * B_D_se), type = 's', lty = 2)
+      lines(stime, c(B_D - 1.96 * B_D_se), type = 's', lty = 2)
+      abline(0, 0)
+      lines(stime, beta_D * stime)
+      lines(stime, (beta_D + 1.96 * beta_D_se) * stime, lty = 2)
+      lines(stime, (beta_D - 1.96 * beta_D_se) * stime, lty = 2)
+      
+      B_Z <- obj$B_Z
+      B_Z_se <- obj$B_Z_se
+      beta_Z = obj$beta_Z
+      beta_Z_se = obj$beta_Z_se
+      stime = obj$stime
+      minv1 = min(c(B_Z - 1.96 * B_Z_se, beta_Z * stime))
+      maxv1 = max(c(B_Z + 1.96 * B_Z_se, beta_Z * stime))
+      
+      #par(mfrow=c(1,1))
+      plot(stime, B_Z, type = "s", ylim = c(minv1, maxv1), ...)
+      lines(stime, c(B_Z + 1.96 * B_Z_se), type = 's', lty = 2)
+      lines(stime, c(B_Z - 1.96 * B_Z_se), type = 's', lty = 2)
+      abline(0, 0)
+      lines(stime, beta_Z * stime)
+      lines(stime, (beta_Z + 1.96 * beta_Z_se) * stime, lty = 2)
+      lines(stime, (beta_Z - 1.96 * beta_Z_se) * stime, lty = 2)
+    }
   }
   invisible()
 }

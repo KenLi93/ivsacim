@@ -2,11 +2,11 @@
 % Please edit documentation in R/auxiliary.R
 \name{IV_center}
 \alias{IV_center}
-\title{This function is to compute the centralized instrument given the covariates L}
+\title{This function is to compute the centralized instrument}
 \usage{
-IV_center(Z, L = NULL)
+IV_center(Z, weights)
 }
 \description{
-This function is to compute the centralized instrument given the covariates L
+This function is to compute the centralized instrument
 }
 \keyword{internal}

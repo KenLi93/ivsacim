@@ -12,10 +12,37 @@ invalidivsacim_est(
   Z_c,
   D_status,
   D_status_c,
+  Z_model_mat,
+  eps_1,
+  D_model_mat,
   eps_2,
-  Z_c_dot,
   weights
 )
+}
+\arguments{
+\item{time}{censored event time}
+
+\item{event}{event indicator}
+
+\item{stime}{unique sorted noncensored event time}
+
+\item{Z}{the instrument}
+
+\item{Z_c}{centered IV}
+
+\item{D_status}{treatment process at each noncensored event time}
+
+\item{D_status_c}{centered treatment process at each noncensored event time}
+
+\item{Z_model_mat}{bread matrix from modeling IV}
+
+\item{eps_1}{influence function from modeling IV}
+
+\item{D_model_mat}{bread matrix from modeling treatment}
+
+\item{eps_2}{influence function from modeling treatment}
+
+\item{weights}{optional weights}
 }
 \description{
 This is the main function to compute the estimator in C++

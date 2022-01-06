@@ -1,5 +1,7 @@
-# include <Rcpp.h>
+// [[Rcpp::depends(RcppArmadillo)]]
+# include <RcppArmadillo.h>
 using namespace Rcpp;
+
 // This is a simple example of exporting a C++ function to R. You can
 // source this function into an R session using the Rcpp::sourceCpp 
 // function (or via the Source button on the editor toolbar). Learn
@@ -11,6 +13,18 @@ using namespace Rcpp;
 //
 
 //' This is the main function to compute the estimator in C++
+//' @param time censored event time
+//' @param event event indicator
+//' @param stime unique sorted noncensored event time
+//' @param Z the instrument
+//' @param Z_c centered IV
+//' @param D_status treatment process at each noncensored event time
+//' @param D_status_c centered treatment process at each noncensored event time
+//' @param Z_model_mat bread matrix from modeling IV
+//' @param eps_1 influence function from modeling IV
+//' @param D_model_mat bread matrix from modeling treatment
+//' @param eps_2 influence function from modeling treatment
+//' @param weights optional weights
 //' @keywords internal
 //' @export
 // [[Rcpp::export]]
@@ -21,35 +35,30 @@ SEXP invalidivsacim_est(NumericVector time,
                         NumericVector Z_c, 
                         NumericMatrix D_status,
                         NumericMatrix D_status_c,
+                        NumericMatrix Z_model_mat,
+                        NumericMatrix eps_1,
+                        NumericMatrix D_model_mat,
                         NumericMatrix eps_2,
-                        NumericMatrix Z_c_dot,
                         NumericVector weights){
   
   // variables for estimation
-  int n = time.size();
-  int k = stime.size();
-  NumericVector B_D(k), dB_D(k), b_numer_D(2 * k), b_denom_D(4 * k), B_Z(k), dB_Z(k), risk_cumsum(k), indik_v(k), M_det(k);
-  NumericMatrix dN(n, k),  risk_t(n, k), B_intD(n, k + 1), B_intZ(n, k + 1);
-  double tmp_denom_D, temp_eps_11, temp_eps_12;
-  double beta = 0, tot_risk = 0;
-  double del = 0.01;
+  int N = time.size();
+  int K = stime.size();
+  NumericVector B_D(K), dB_D(K), b_numer_D(2 * K), b_denom_D(4 * K), B_Z(K), dB_Z(K), risk_cumsum(K);
+  NumericMatrix dN(N, K),  risk_t(N, K), B_intD(N, K + 1), B_intZ(N, K + 1), tmp_mat(2, 2);
+  double beta_D = 0.0, beta_Z = 0.0, tot_risk = 0.0;
+  double del = 0.001;
   
   // variables for variance estimate
-  int pdim = Z_c_dot.ncol();
-  //int pZdim = Dt_c_dot.ncol();
-  NumericVector B_D_se(k), B_Z_se(k);
-  //double B_D_se_tmp = 0;
-  NumericMatrix b_var_est(k, k);
-  NumericMatrix eps_1(n, 2 * k), eps(n, 2 * k);
-  NumericMatrix b_D_dot(pdim, 2 * k);
-  NumericMatrix H_dot(2 * k, 2 * k);
-  NumericMatrix H_numer_dot(2 * k, 2 * k), H_denom_dot(2 * k, k), H_dot_Z(n, 2 * k);
-  NumericVector eps_beta(n);
-  double tmp, beta_se = 0;
+  int Z_model_dim = Z_model_mat.cols(), D_model_dim = D_model_mat.length() / N / K; 
+  NumericVector B_D_se(K), B_Z_se(K), beta_D_IF(N), beta_Z_IF(N);
+  NumericMatrix res(2 * K, N), bread(2 * K, 2 * K), IF(2 * K, N), B_D_IF(K, N), B_Z_IF(K, N), res_dot_Z(2 * K, Z_model_dim), res_dot_D(2 * K, D_model_dim);
+  double beta_D_se = 0.0, beta_Z_se = 0.0;
   
-  for (int j = 0; j < k; j++) {
+  
+  for (int j = 0; j < K; j++) {
     
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < N; i++) {
       // estimation
       dN(i, j) = (time[i] == stime[j]) ? 1:0;
       dN(i, j) *= event[i];
@@ -59,50 +68,38 @@ SEXP invalidivsacim_est(NumericVector time,
       b_numer_D[2 * j + 1] += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * dN(i, j);
       b_denom_D[4 * j + 0] += weights[i] * Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * D_status(i, j);
       b_denom_D[4 * j + 1] += weights[i] * Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * D_status(i, j);
-      b_denom_D[4 * j + 2] += weights[i] * Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * Z[i];
-      b_denom_D[4 * j + 3] += weights[i] * Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * Z[i];
+      b_denom_D[4 * j + 2] += weights[i] * Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (Z[i] - D_status(i, j));
+      b_denom_D[4 * j + 3] += weights[i] * Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (Z[i] - D_status(i, j));
     }
     
     
-    tmp_denom_D = b_denom_D[4 * j + 0] * b_denom_D[4 * j + 3] - b_denom_D[4 * j + 1] * b_denom_D[4 * j + 2];
-    M_det[j] = tmp_denom_D;
-    tmp_denom_D = (tmp_denom_D < 0) ? -tmp_denom_D:tmp_denom_D;
-    indik_v[j] = (tmp_denom_D < del) ? 0:1;
-    if (indik_v[j]) {
-      dB_D[j] = (b_numer_D[2 * j + 0] * b_denom_D[4 * j + 3] - b_numer_D[2 * j + 1] * b_denom_D[4 * j + 2]) / M_det[j];
-      dB_Z[j] = (-b_numer_D[2 * j + 0] * b_denom_D[4 * j + 1] + b_numer_D[2 * j + 1] * b_denom_D[4 * j + 0]) / M_det[j];
-    }
     
+    tmp_mat(0, 0) = b_denom_D[4 * j + 0];
+    tmp_mat(1, 0) = b_denom_D[4 * j + 1];
+    tmp_mat(0, 1) = b_denom_D[4 * j + 2];
+    tmp_mat(1, 1) = b_denom_D[4 * j + 3];
+    // solve linear system using RcppArmadillo
+    arma::mat X(tmp_mat.begin(), 2, 2, false);
+    arma::mat tmp_pinv = arma::pinv(X, del);
+    dB_D[j] = b_numer_D[2 * j + 0] * tmp_pinv(0, 0) + b_numer_D[2 * j + 1] * tmp_pinv(0, 1);
+    dB_Z[j] = b_numer_D[2 * j + 0] * tmp_pinv(1, 0) + b_numer_D[2 * j + 1] * tmp_pinv(1, 1);
+
     
     // estimation
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < N; i++) {
       B_intD(i, j + 1) += D_status(i, j) * dB_D[j];
       B_intD(i, j + 1) += B_intD(i, j);
-      eps_1(i, 2 * j + 0) += Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j]));
-      eps_1(i, 2 * j + 1) += Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j]));
-      B_intZ(i, j + 1) += Z[i] * B_Z[j];
+      B_intZ(i, j + 1) += (Z[i] - D_status(i, j)) * dB_Z[j];
+      B_intZ(i, j + 1) += B_intZ(i, j);
+      res(2 * j + 0, i) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
+      res(2 * j + 1, i) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
     }
     
     
-    // variance estimate
-    if (indik_v[j]) {
-      for (int i = 0; i < n; i++) {
-        temp_eps_11 = eps_1(i, 2 * j + 0);
-        temp_eps_12 = eps_1(i, 2 * j + 1);
-        eps_1(i, 2 * j + 0) = (temp_eps_11 * b_denom_D[4 * j + 3] - temp_eps_12 * b_denom_D[4 * j + 2]) / M_det[j];
-        eps_1(i, 2 * j + 1) = (-temp_eps_11 * b_denom_D[4 * j + 1] + temp_eps_12 * b_denom_D[4 * j + 0]) / M_det[j];
-      }
-    }
-    else{
-      for (int i = 0; i < n; i++) {
-        eps_1(i, 2 * j + 0) = 0;
-        eps_1(i, 2 * j + 1) = 0;
-      }
-    }
     
-    
-    // estimation part for beta
-    beta += risk_cumsum[j] * dB_D[j];
+    // estimation part for beta_D
+    beta_D += risk_cumsum[j] * dB_D[j];
+    beta_Z += risk_cumsum[j] * dB_Z[j];
     
     if (j == 0) {
       B_D[j] = 0 + dB_D[j];
@@ -117,157 +114,131 @@ SEXP invalidivsacim_est(NumericVector time,
   }
   
   // time invariant intensity
-  beta /= tot_risk;
+  beta_D /= tot_risk;
+  beta_Z /= tot_risk;
   
   // variance estimate
-  for (int j = 0; j < k; j++) {
+  for (int j = 0; j < K; j++) {
     for (int l = 0; l < j; l++) {
-      for (int i = 0; i < n; i++) {
-        H_numer_dot(2 * l + 0, 2 * j + 0) += Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * dN(i, j) * D_status(i, l);
-        H_numer_dot(2 * l + 1, 2 * j + 0) += Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * dN(i, j) * Z[i];
-        H_numer_dot(2 * l + 0, 2 * j + 1) += Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * dN(i, j) * D_status(i, l);
-        H_numer_dot(2 * l + 1, 2 * j + 1) += Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * dN(i, j) * Z[i];
-        // H_denom_dot(2 * l + 0, j) += (Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * D_status(i, j) * D_status(i, l)) * b_denom_D[4 * j + 3];
-        // H_denom_dot(2 * l + 0, j) += (Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * Z[i] * D_status(i, l)) * b_denom_D[4 * j + 0];
-        // H_denom_dot(2 * l + 0, j) -= (Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * D_status(i, j) * D_status(i, l)) * b_denom_D[4 * j + 2];
-        // H_denom_dot(2 * l + 0, j) -= (Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * Z[i] * D_status(i, l)) * b_denom_D[4 * j + 1];
-        // H_denom_dot(2 * l + 1, j) += (Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * D_status(i, j) * Z[i]) * b_denom_D[4 * j + 3];
-        // H_denom_dot(2 * l + 1, j) += (Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * Z[i] * Z[i]) * b_denom_D[4 * j + 0];
-        // H_denom_dot(2 * l + 1, j) -= (Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * D_status(i, j) * Z[i]) * b_denom_D[4 * j + 2];
-        // H_denom_dot(2 * l + 1, j) -= (Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * Z[i] * Z[i]) * b_denom_D[4 * j + 1];
-      }
-      if (indik_v[j]) {
-        H_dot(2 * l + 0, 2 * j + 0) = (H_numer_dot(2 * l + 0, 2 * j + 0) * b_denom_D[4 * j + 3] - H_numer_dot(2 * l + 0, 2 * j + 1) * b_denom_D[4 * j + 2]) / M_det[j];
-        //H_dot(2 * l + 0, 2 * j + 0) -= dB_D[j] * H_denom_dot(2 * l + 0, j) / M_det[j];
-        H_dot(2 * l + 1, 2 * j + 0) = (H_numer_dot(2 * l + 1, 2 * j + 0) * b_denom_D[4 * j + 3] - H_numer_dot(2 * l + 1, 2 * j + 1) * b_denom_D[4 * j + 2]) / M_det[j];
-        //H_dot(2 * l + 1, 2 * j + 0) -= dB_D[j] * H_denom_dot(2 * l + 1, j) / M_det[j];
-        H_dot(2 * l + 0, 2 * j + 1) = (-H_numer_dot(2 * l + 0, 2 * j + 0) * b_denom_D[4 * j + 1] + H_numer_dot(2 * l + 0, 2 * j + 1) * b_denom_D[4 * j + 0]) / M_det[j];
-        //H_dot(2 * l + 0, 2 * j + 1) -= dB_D[j] * H_denom_dot(2 * l + 0, j) / M_det[j];
-        H_dot(2 * l + 1, 2 * j + 1) = (-H_numer_dot(2 * l + 1, 2 * j + 0) * b_denom_D[4 * j + 1] + H_numer_dot(2 * l + 1, 2 * j + 1) * b_denom_D[4 * j + 0]) / M_det[j];
-        //H_dot(2 * l + 1, 2 * j + 1) -= dB_D[j] * H_denom_dot(2 * l + 1, j) / M_det[j];
-      }
-    }
-  }
-
-  // 
-  // 
-  // for (int j = 0; j < k; j++) {
-  //   for (int j1 = 0; j1 < pdim; j1++){
-  //     for (int l = 0; l < j; l++) {
-  //       b_D_dot(j1, j) += H_dot(2 * l + 0, 2 * j + 0) * b_D_dot(j1, l);
-  //       b_D_dot(j1, j) += H_dot(2 * l + 0, 2 * j + 1) * b_D_dot(j1, l);
-  //       b_D_dot(j1, j) += H_dot(2 * l + 1, 2 * j + 0) * b_D_dot(j1, l);
-  //       b_D_dot(j1, j) += H_dot(2 * l + 1, 2 * j + 1) * b_D_dot(j1, l);
-  //     }
-  //     for (int i = 0; i < n; i++) {
-  //       if (indik_v[j]) {
-  // 
-  //         H_dot_Z(i, 2 * j + 0) += (exp(B_intD(i, j) + B_intZ(i, j)) * dN(i, j) * b_denom_D[4 * j + 3] - D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * dN(i, j) * b_denom_D[4 * j + 0]) / M_det[j];
-  //         H_dot_Z(i, 2 * j + 0) -= risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * D_status(i, j) * b_numer_D[j] / M_det[j];
-  //       }
-  //       b_D_dot(j1, 2 * j + 0) -= H_dot_Z(i, 2 * j + 0) * Z_c_dot(i, j1);
-  //       b_D_dot(j1, 2 * j + 1) -= H_dot_Z(i, 2 * j + 1) * Z_c_dot(i, j1);
-  //       
-  //     }
-  //   }
-  // }
-  // 
-  // 
-  for (int i = 0; i < n; i++) {
-    for (int j = 0; j < 2 * k; j++) {
-      for (int l = 0; l < j; l++) {
-        tmp -= H_dot(l, j) * eps(i, l);
-      }
-      eps(i, j) += eps_1(i, j) - tmp;
-      tmp = 0;
-    }
-  }
-  // 
-  // for (int i = 0; i < n; i++) {
-  //   for (int j = 0; j < 2 * k; j++) {
-  //     for (int j1 = 0; j1 < pdim; j1++) {
-  //       eps(i, j) += eps_2(i, j1) * b_D_dot(j1, j);
-  //     }
-  //   }
-  // }
-  // 
-  // for (int i = 0; i < n; i++) {
-  //   for (int j = 0; j < k; j++) {
-  //     eps_beta[i] += eps(i, 2 * j + 1) * risk_cumsum[j];
-  //   }
-  //   eps_beta[i] /= tot_risk;
-  // }
-  // 
-  // 
-  // for (int j = 0; j < k; j++) {
-  //   for (int l = 0; l < k; l++) {
-  //     for (int i = 0; i < n; i++) {
-  //       b_var_est(j, l) += eps(i, 2 * j + 1) * eps(i, 2 * l + 1);
-  //     }
-  //   }
-  // }
-  for (int j = 0; j < k; j++) {
-    for (int l = 0; l < k; l++) {
-      for (int i = 0; i < n; i++) {
-        b_var_est(j, l) += eps(i, 2 * j + 0) * eps(i, 2 * l + 0);
-        b_var_est(j, l) += eps(i, 2 * j + 1) * eps(i, 2 * l + 0);
-        b_var_est(j, l) += eps(i, 2 * j + 0) * eps(i, 2 * l + 1);
-        b_var_est(j, l) += eps(i, 2 * j + 1) * eps(i, 2 * l + 1);
-        
+      for (int i = 0; i < N; i++) {
+        bread(2 * j + 0, 2 * l + 0) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) * D_status(i, l) / N;
+        bread(2 * j + 0, 2 * l + 1) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) * (Z[i] - D_status(i, l)) / N;
+        bread(2 * j + 1, 2 * l + 0) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) * D_status(i, l) / N;
+        bread(2 * j + 1, 2 * l + 1) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) * (Z[i] - D_status(i, l)) / N;
       }
     }
   }
   
-
-
-  for (int j = 0; j < k; j++) {
-    for (int l = 0; l < j; l++) {
-      B_D_se[j] += b_var_est(l, j);
-    }
-    for (int l = 0; l < j; l++) {
-      B_D_se[j] += b_var_est(j, l);
-    }
-    B_D_se[j] += b_var_est(j, j);
-    if (j > 0) {
-      B_D_se[j] += B_D_se[j - 1];
+  
+  for (int j = 0; j < K; j++) {
+    for (int i = 0; i < N; i++) {
+      bread(2 * j + 0, 2 * j + 0) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * D_status(i, j) / N;
+      bread(2 * j + 0, 2 * j + 1) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * (Z[i] - D_status(i, j)) / N;
+      bread(2 * j + 1, 2 * j + 0) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * D_status(i, j) / N;
+      bread(2 * j + 1, 2 * j + 1) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * (Z[i] - D_status(i, j)) / N;
     }
   }
-
-  for (int j = 0; j < k; j++) {
+  
+  
+  // compute derivative matrix of the estimating equation against first step estimators
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < K; j++) {
+      for (int j1 = 0; j1 < Z_model_dim; j1++) {
+        res_dot_Z(2 * j + 0, j1) += weights[i] * -Z_model_mat(i, j1) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
+        res_dot_Z(2 * j + 1, j1) += weights[i] * -Z_model_mat(i, j1) * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
+      }
+      for (int j2 = 0; j2 < D_model_dim; j2++) {
+        res_dot_D(2 * j + 0, j2) += weights[i] * 0;
+        res_dot_D(2 * j + 1, j2) += weights[i] * Z_c[i] * -D_model_mat(i, j * D_model_dim + j2) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
+      }
+    }
+  }
+  
+  // stacking residuals
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < 2 * K; j++) {
+      for (int j1 = 0; j1 < Z_model_dim; j1++) {
+        res(j, i) += res_dot_Z(j, j1) * eps_1(j1, i);
+      }
+    }
+  }
+  
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < K; j++) {
+      for (int j2 = 0; j2 < D_model_dim; j2++) {
+        res(2 * j + 0, i) += res_dot_D(2 * j + 0, j2) * eps_2(2 * j + j2, i);
+        res(2 * j + 1, i) += res_dot_D(2 * j + 1, j2) * eps_2(2 * j + j2, i);
+      }
+    }
+  }
+  
+  
+  // solve linear system using RcppArmadillo
+  arma::mat X(bread.begin(), 2 * K, 2 * K, false);
+  arma::mat X_pinv = arma::pinv(-X, del);
+  
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < 2 * K; j++) {
+      for (int k = 0; k < 2 * K; k++) {
+        IF(j, i) += X_pinv(j, k) * res(k, i);
+      }
+    }
+  }
+  
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < K; j++) {
+      B_D_IF(j, i) = IF(2 * j + 0, i);
+      B_Z_IF(j, i) = IF(2 * j + 1, i);
+      if (j > 0) {
+        B_D_IF(j, i) += B_D_IF(j - 1, i);
+        B_Z_IF(j, i) += B_Z_IF(j - 1, i);
+      }
+      beta_D_IF[i] += IF(2 * j + 0, i) * risk_cumsum[j] / tot_risk;
+      beta_Z_IF[i] += IF(2 * j + 1, i) * risk_cumsum[j] / tot_risk;
+    }
+  }
+  
+  for (int j = 0; j < K; j++) {
+    for (int i = 0; i < N; i++) {
+      B_D_se[j] += B_D_IF(j, i) * B_D_IF(j, i);
+      B_Z_se[j] += B_Z_IF(j, i) * B_Z_IF(j, i);
+    }
     B_D_se[j] = sqrt(B_D_se[j]);
+    B_Z_se[j] = sqrt(B_Z_se[j]);
   }
   
-  for (int i = 0; i < n; i++) {
-   beta_se += eps_beta[i] * eps_beta[i];
+  for (int i = 0; i < N; i++) {
+    beta_D_se += beta_D_IF[i] * beta_D_IF[i];
+    beta_Z_se += beta_Z_IF[i] * beta_Z_IF[i];
   }
-  
-  beta_se = sqrt(beta_se);
+  beta_D_se = sqrt(beta_D_se);
+  beta_Z_se = sqrt(beta_Z_se);
   
   List by_prod = List::create(
-    Named("Z_c") = Z_c,
     Named("dN") = dN,
     Named("risk_t") = risk_t,
-    Named("indik_v") = indik_v,
     Named("b_numer_D") = b_numer_D,
     Named("b_denom_D") = b_denom_D,
     Named("B_intD") = B_intD,
-    Named("eps_1") = eps_1,
-    Named("eps_2") = eps_2,
-    Named("eps") = eps,
-    Named("H_dot") = H_dot,
-    Named("b_D_dot") = b_D_dot,
-    Named("b_var_est") = b_var_est,
-    Named("eps_beta") = eps_beta);
+    Named("Z_model_dim") = Z_model_dim,
+    Named("D_model_dim") = D_model_dim,
+    Named("bread") = bread,
+    Named("B_D_IF") = B_D_IF,
+    Named("B_Z_IF") = B_Z_IF,
+    Named("beta_D_IF") = beta_D_IF,
+    Named("beta_Z_IF") = beta_Z_IF);
   
   return List::create(
     Named("stime") = stime,
     Named("dB_D") = dB_D,
     Named("B_D") = B_D,
+    Named("B_D_se") = B_D_se,
     Named("dB_Z") = dB_Z,
     Named("B_Z") = B_Z,
-    Named("beta") = beta,
-    Named("B_D_se") = B_D_se,
     Named("B_Z_se") = B_Z_se,
-    Named("beta_se") = beta_se,
+    Named("beta_D") = beta_D,
+    Named("beta_Z") = beta_Z,
+    Named("beta_D_se") = beta_D_se,
+    Named("beta_Z_se") = beta_Z_se,
     Named("by_prod") = by_prod);
 }

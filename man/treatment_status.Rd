@@ -4,7 +4,7 @@
 \alias{treatment_status}
 \title{This function is to generate a grid of treatment status}
 \usage{
-treatment_status(n, k, stime, treatment_init, treatment_shift_time, max_time)
+treatment_status(N, K, stime, treatment_init, treatment_shift_time, max_time)
 }
 \description{
 This function is to generate a grid of treatment status
