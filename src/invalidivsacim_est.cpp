@@ -68,8 +68,8 @@ SEXP invalidivsacim_est(NumericVector time,
       b_numer_D[2 * j + 1] += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * dN(i, j);
       b_denom_D[4 * j + 0] += weights[i] * Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * D_status(i, j);
       b_denom_D[4 * j + 1] += weights[i] * Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * D_status(i, j);
-      b_denom_D[4 * j + 2] += weights[i] * Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (Z[i] - D_status(i, j));
-      b_denom_D[4 * j + 3] += weights[i] * Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (Z[i] - D_status(i, j));
+      b_denom_D[4 * j + 2] += weights[i] * Z_c[i] * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * Z[i];
+      b_denom_D[4 * j + 3] += weights[i] * Z_c[i] * D_status_c(i, j) * risk_t(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * Z[i];
     }
     
     
@@ -89,10 +89,10 @@ SEXP invalidivsacim_est(NumericVector time,
     for (int i = 0; i < N; i++) {
       B_intD(i, j + 1) += D_status(i, j) * dB_D[j];
       B_intD(i, j + 1) += B_intD(i, j);
-      B_intZ(i, j + 1) += (Z[i] - D_status(i, j)) * dB_Z[j];
+      B_intZ(i, j + 1) += Z[i] * dB_Z[j];
       B_intZ(i, j + 1) += B_intZ(i, j);
-      res(2 * j + 0, i) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
-      res(2 * j + 1, i) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
+      res(2 * j + 0, i) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j])) / N;
+      res(2 * j + 1, i) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j])) / N;
     }
     
     
@@ -121,10 +121,10 @@ SEXP invalidivsacim_est(NumericVector time,
   for (int j = 0; j < K; j++) {
     for (int l = 0; l < j; l++) {
       for (int i = 0; i < N; i++) {
-        bread(2 * j + 0, 2 * l + 0) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) * D_status(i, l) / N;
-        bread(2 * j + 0, 2 * l + 1) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) * (Z[i] - D_status(i, l)) / N;
-        bread(2 * j + 1, 2 * l + 0) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) * D_status(i, l) / N;
-        bread(2 * j + 1, 2 * l + 1) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) * (Z[i] - D_status(i, l)) / N;
+        bread(2 * j + 0, 2 * l + 0) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j])) * D_status(i, l) / N;
+        bread(2 * j + 0, 2 * l + 1) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j])) * Z[i] / N;
+        bread(2 * j + 1, 2 * l + 0) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j])) * D_status(i, l) / N;
+        bread(2 * j + 1, 2 * l + 1) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j])) * Z[i] / N;
       }
     }
   }
@@ -133,9 +133,9 @@ SEXP invalidivsacim_est(NumericVector time,
   for (int j = 0; j < K; j++) {
     for (int i = 0; i < N; i++) {
       bread(2 * j + 0, 2 * j + 0) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * D_status(i, j) / N;
-      bread(2 * j + 0, 2 * j + 1) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * (Z[i] - D_status(i, j)) / N;
+      bread(2 * j + 0, 2 * j + 1) += weights[i] * Z_c[i] * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * Z[i] / N;
       bread(2 * j + 1, 2 * j + 0) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * D_status(i, j) / N;
-      bread(2 * j + 1, 2 * j + 1) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * (Z[i] - D_status(i, j)) / N;
+      bread(2 * j + 1, 2 * j + 1) += weights[i] * Z_c[i] * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * -risk_t(i, j) * Z[i] / N;
     }
   }
   
@@ -144,12 +144,12 @@ SEXP invalidivsacim_est(NumericVector time,
   for (int i = 0; i < N; i++) {
     for (int j = 0; j < K; j++) {
       for (int j1 = 0; j1 < Z_model_dim; j1++) {
-        res_dot_Z(2 * j + 0, j1) += weights[i] * -Z_model_mat(i, j1) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
-        res_dot_Z(2 * j + 1, j1) += weights[i] * -Z_model_mat(i, j1) * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
+        res_dot_Z(2 * j + 0, j1) += weights[i] * -Z_model_mat(i, j1) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j])) / N;
+        res_dot_Z(2 * j + 1, j1) += weights[i] * -Z_model_mat(i, j1) * D_status_c(i, j) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j])) / N;
       }
       for (int j2 = 0; j2 < D_model_dim; j2++) {
         res_dot_D(2 * j + 0, j2) += weights[i] * 0;
-        res_dot_D(2 * j + 1, j2) += weights[i] * Z_c[i] * -D_model_mat(i, j * D_model_dim + j2) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + (Z[i] - D_status(i, j)) * dB_Z[j])) / N;
+        res_dot_D(2 * j + 1, j2) += weights[i] * Z_c[i] * -D_model_mat(i, j * D_model_dim + j2) * exp(B_intD(i, j) + B_intZ(i, j)) * (dN(i, j) - risk_t(i, j) * (D_status(i, j) * dB_D[j] + Z[i] * dB_Z[j])) / N;
       }
     }
   }

@@ -1,4 +1,4 @@
-0963ea5ccdff905245a6920392b99410 *DESCRIPTION
+fa45b96ea2c60b034a4868858e72037f *DESCRIPTION
 0fe33089133311ee64ff70e4fac2208a *NAMESPACE
 9ee6a4b8b0597828ea6432dea7cfe963 *R/RcppExports.R
 71dcacedced2f7a74d462247a45ff9dc *R/auxiliary.R
@@ -15,5 +15,5 @@ aed0247d2e92306135a566a1c84c0682 *man/trt_center.Rd
 61059660eb073d93e00e8ee054237071 *src/Makevars
 61059660eb073d93e00e8ee054237071 *src/Makevars.win
 dfa4eab25693bd5b8413bc48040abb0e *src/RcppExports.cpp
-7e9ef022a0549310076bb35e36710be7 *src/invalidivsacim_est.cpp
+eca514d8026dfe7676d4ba365658b26d *src/invalidivsacim_est.cpp
 b9c035543c5ccbb6c0ea88c45e2a3746 *src/ivsacim_est.cpp
